@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Heist Night</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+:root{--bg:#0b0d10;--card:#151a20;--fg:#e8f1ee;--mut:#8a9a96;--ac:#39ff88;--red:#ff3b4e;--gold:#ffc83d;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+#app{max-width:560px;margin:0 auto;padding:18px 16px 40px}
+h1{margin:6px 0;font-size:30px;letter-spacing:.04em;color:var(--ac)}
+h2,h3{margin:6px 0}
+.mut{color:var(--mut)}
+.big{font-size:44px;font-weight:800;margin:10px 0}
+.btn,.btn2{display:block;width:100%;margin:14px 0;padding:16px;border:0;border-radius:12px;font-size:18px;font-weight:800;background:var(--ac);color:#04140a;cursor:pointer}
+.btn2{background:var(--card);color:var(--fg);border:1px solid #2b333c}
+.in{width:100%;padding:13px;margin:8px 0;border-radius:10px;border:1px solid #2b333c;background:var(--card);color:var(--fg);font-size:16px;user-select:text;-webkit-user-select:text}
+.qr{background:#fff;border-radius:14px;padding:10px;width:min(260px,70vw);margin:12px auto;color:#000}
+.qr svg{width:100%;height:auto;display:block}
+.chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:10px 0}
+.chip{background:var(--card);border:1px solid #2b333c;border-radius:99px;padding:6px 12px}
+.chip.ok{border-color:var(--ac);color:var(--ac)}
+.card{background:var(--card);border-radius:14px;padding:12px;margin:12px 0;text-align:left}
+.card div{display:flex;justify-content:space-between;padding:3px 0}
+.shot{font-size:34px;font-weight:900;color:var(--gold);margin:14px 0}
+.bar{height:10px;background:var(--card);border-radius:9px;overflow:hidden;margin:14px 0}
+.bar i{display:block;height:100%;width:100%;background:var(--ac);transition:width 3.5s linear}
+.ptr{position:absolute;left:50%;top:-18px;transform:translateX(-50%);color:var(--red);font-size:24px;z-index:2}
+.track{position:relative;height:46px;background:var(--card);border-radius:10px;margin:22px 0;overflow:hidden}
+.zone{position:absolute;top:0;bottom:0;background:rgba(57,255,136,.35);border:1px solid var(--ac)}
+.mk{position:absolute;top:0;bottom:0;width:6px;background:var(--gold);margin-left:-3px}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:280px;margin:14px auto}
+.pad button{padding:18px 0;font-size:24px;font-weight:700;border-radius:12px;border:1px solid #2b333c;background:var(--card);color:var(--fg)}
+.shake{animation:sh .3s}@keyframes sh{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+input[type=range]{height:44px;accent-color:var(--ac)}
+</style></head><body><div id="app"></div>
+<script>
+const $=s=>document.querySelector(s),app=$('#app');
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ALL=["react","safe","mash","laser","typing","redgreen","pick","timer","code","maze","diamonds"];
+const I={safe:["🔐 Safe Cracker","Spin the dial. Listen and feel for the different click. Tap LOCK IN there. Fastest wins."],
+laser:["🔴 Laser Hallway","Swipe anywhere to move your robber. Dodge the lasers. Last the longest."],
+maze:["🌀 Maze Run","Press START, drag to FINISH. Walls block you. Lift your finger and you restart!"],
+diamonds:["💎 Diamond Count","Count the diamonds that flash. Enter the number. Wrong = out!"],
+code:["🔢 Keypad Memory","Memorise the code. Type it fast. One try."],
+pick:["📍 Lockpick","Stop the marker in the green zone. 3 pins. Closest wins."],
+react:["⚡ Quick Draw","A button appears at a random spot on the screen. Tap it first!"],
+mash:["👆 Tap Frenzy","Tap 100 times. The bar drops with each tap. Fastest wins."],
+redgreen:["🚦 Red Light, Green Light","Tap to run to the goal 🏁. Green: tap. Red: freeze, or lose a life (you have 2 ❤️❤️). First to the goal, or last one alive, wins."],
+typing:["⌨️ Type It!","Type the sentence exactly. Wrong letters show in red. Fastest wins."],
+timer:["⏱️ Inner Clock","You see the clock for 2.5 seconds, then it hides. Tap STOP at the target time. We show your click time."]};
+const fmt=(g,s)=>s>=99999?'FAILED':g==='laser'?(-s/1000).toFixed(1)+'s survived':g==='redgreen'?(s<=60000?'Reached the goal in '+(s/1000).toFixed(1)+'s':s<62000?'Survived':'Eliminated'):g==='react'?Math.round(s)+' ms':g==='timer'?(s/1000).toFixed(2)+'s off':g==='pick'?s.toFixed(1)+' off':(s/1000).toFixed(1)+'s';
+let CR=0,waitEnd=0,MODE=null;const LASER_WAIT=120000;
+/* PIXEL ROBBER: swap this sprite later. map letters: K black, W white, S skin, C = player colour */
+const MAP=['...KKKK...','..KKKKKK..','..KKKKKK..','..SSSSSS..','..KWKKWK..','..SSSSSS..','...SSSS...','.CCCCCCCC.','SCCCCCCCCS','.CCCCCCCC.','..CCCCCC..','..KK..KK..'],PAL={K:'#111',W:'#fff',S:'#f0c9a0'};
+const hue=n=>'hsl('+([...n].reduce((a,c)=>a+c.charCodeAt(0)*7,0)%360)+',70%,50%)';
+function sprite(c){let r='';MAP.forEach((row,y)=>[...row].forEach((ch,x)=>{if(ch!=='.')r+=`<rect x=${x} y=${y} width=1 height=1 fill="${PAL[ch]||c}"/>`}));return `<svg viewBox="0 0 10 12" width=34 height=40 shape-rendering="crispEdges" style="display:block">${r}</svg>`}
+function lanesHTML(es){return es.map(e=>`<div style="display:flex;align-items:center;gap:6px;margin:4px 0"><div style="width:64px;font-size:12px;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;${e.me?'color:var(--ac);font-weight:700':''}">${esc(e.name)}<br><span style="font-size:11px;font-weight:400">${'❤️'.repeat(e.l==null?2:e.l)+'🖤'.repeat(2-(e.l==null?2:e.l))}</span></div><div style="position:relative;flex:1;height:44px;background:var(--card);border-radius:8px"><div style="position:absolute;top:2px;left:${e.x}%;transform:translateX(-${e.x}%);${e.d?'filter:grayscale(1);opacity:.5':''}">${sprite(hue(e.name))}${e.d?'<span style="position:absolute;left:7px;top:6px;font-size:22px">💀</span>':''}</div><div style="position:absolute;right:3px;top:10px">🏁</div></div></div>`).join('')}
+function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+let AC,UM;
+function silentWav(){const n=2000,b=new ArrayBuffer(44+n*2),v=new DataView(b),w=(o,t)=>[...t].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));w(0,'RIFF');v.setUint32(4,36+n*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,8000,true);v.setUint32(28,16000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);return URL.createObjectURL(new Blob([b],{type:'audio/wav'}))}
+function au(){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();if(AC.state!=='running')AC.resume();
+ if(!UM){UM=document.createElement('audio');UM.src=silentWav();UM.loop=true;UM.setAttribute('playsinline','');UM.play().catch(()=>{UM=null})}}catch(e){}}
+['pointerdown','touchend','click'].forEach(ev=>document.addEventListener(ev,au,{passive:true}));
+function click(f,v,d){if(!AC)return;if(AC.state!=='running')AC.resume();const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime;o.type='triangle';o.frequency.value=f;g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(AC.destination);o.start();o.stop(t+d)}
+const vib=p=>{try{navigator.vibrate&&navigator.vibrate(p)}catch(e){}};
+
+let room=null,role=null,myName='',H={w:{}},G=null,lastK='',hostTimer=null;
+(function L(u){u=u||['https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js','https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js','https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js'];const x=u.shift();if(!x)return;const e=document.createElement('script');e.src=x;e.onerror=()=>L(u);document.head.appendChild(e)})();
+const CODE=new URLSearchParams(location.search).get('r');let JU='';
+const BR=['wss://broker.emqx.io:8084/mqtt','wss://mqtt.eclipseprojects.io:443/mqtt','wss://broker.hivemq.com:8884/mqtt'];
+function connect(i,ok,fail){if(typeof mqtt==='undefined'){let n=0;const iv=setInterval(()=>{if(typeof mqtt!=='undefined'){clearInterval(iv);connect(i,ok,fail)}else if(++n>40){clearInterval(iv);fail()}},300);return}
+ let done=false;const cl=mqtt.connect(BR[i],{reconnectPeriod:3000,connectTimeout:5000,clientId:'h26_'+Math.random().toString(36).slice(2,10)});
+ cl.once('connect',()=>{done=true;ok(cl)});cl.on('error',()=>{});setTimeout(()=>{if(!done){try{cl.end(true)}catch(e){}fail()}},6000)}
+function mkRoom(host,code){const subs=[],ps=new Map(),cls=[],pid=Math.random().toString(36).slice(2,9),T0='heist26/'+code+'/';let mine={},list=[];
+ const note=()=>subs.forEach(f=>f()),pub=(t,o,r)=>{const m=JSON.stringify(o);cls.forEach(c=>c.connected&&c.publish(T0+t,m,{retain:!!r}))};
+ let tmo=0;const sch=()=>{if(!tmo)tmo=setTimeout(()=>{tmo=0;upd()},150)};const upd=()=>{const now=Date.now();ps.forEach((v,k)=>{if(now-v.t>9000)ps.delete(k)});list=[mine,...[...ps.values()].map(v=>v.p)];pub('h',list,true);note()};
+ if(host){list=[mine];setInterval(upd,3000)}else setInterval(()=>pub('p/'+pid,mine),3000);
+ return{ok:()=>cls.some(c=>c.connected),peers:()=>list.map(p=>({presence:p,isMe:false})),onPeers:f=>{subs.push(f)},
+  add:cl=>{cls.push(cl);if(host){cl.subscribe(T0+'p/+');cl.on('message',(t,m)=>{try{ps.set(t.split('/').pop(),{p:JSON.parse(m),t:Date.now()});sch()}catch(e){}});upd()}
+   else{cl.subscribe(T0+'h');cl.on('message',(t,m)=>{try{list=JSON.parse(m);note()}catch(e){}});pub('p/'+pid,mine)}},
+  presence:p=>{Object.assign(mine,p);if(host)upd();else pub('p/'+pid,mine);return Promise.resolve()}}}
+const T=()=>{role==='host'?hostTick():role==='player'?playerTick():0};setInterval(T,1000);
+function landing(){
+ app.innerHTML='<h1>🕶️ HEIST NIGHT</h1><p class=mut>10 rounds · 4 heist minigames · winner takes a shot</p>'+(CODE?'<input id=nm class=in maxlength=16 placeholder="Your thief name"><button class=btn id=jn>JOIN AS A THIEF</button>':'<button class=btn id=hs>Host on the big screen</button><p class=mut>Players scan the QR code on the host screen to join.</p>')+'<p class=mut style="font-size:12px">Please drink responsibly. Never drive. Skip a shot any time.</p><div id=er class=mut></div>';
+ if(CODE)$('#jn').onclick=()=>{myName=$('#nm').value.trim().slice(0,16);if(!myName){$('#nm').focus();return}au();$('#jn').disabled=true;$('#er').textContent='Connecting…';
+  const fail=()=>{$('#er').textContent='Could not connect. This network or an ad blocker may be blocking the game. Try mobile data or another browser, then tap Join again.';$('#jn').disabled=false};
+  const go=i=>connect(i,cl=>{if(!room){room=mkRoom(false,CODE);room.onPeers(T);role='player';room.presence({role:'player',name:myName,r:0,s:null});lastK='';app.innerHTML='<h2>Connecting to the host…</h2>'}room.add(cl);playerTick()},()=>{if(i+1<BR.length)go(i+1);else if(!room)fail()});
+  go(0)};
+ else $('#hs').onclick=()=>{$('#hs').disabled=true;$('#er').textContent='Connecting…';startHost()};
+}
+function startHost(){const code=Math.random().toString(36).slice(2,7);let n=0,fails=0;
+ BR.forEach((_,i)=>connect(i,cl=>{if(!room){room=mkRoom(true,code);room.onPeers(T);role='host';JU=location.origin+location.pathname+'?r='+code;H={w:{},ph:'lobby',r:0};
+  room.presence({role:'host',ph:'lobby',r:0,w:{},win:null,top:null});try{navigator.wakeLock&&navigator.wakeLock.request('screen')}catch(e){}renderHost()}room.add(cl)},()=>{if(++fails>=BR.length&&!room){$('#er').textContent='Could not connect. This network or an ad blocker may be blocking the game. Try mobile data or another browser, then reload.';$('#hs').disabled=false}}))}
+landing();
+
+/* ---------- HOST ---------- */
+const players=()=>room.peers().filter(p=>p.presence.role==='player');
+const isDone=p=>H.ph==='play'&&p.presence.r===H.r&&p.presence.s!=null;
+function hset(p){Object.assign(H,p);room.presence(p)}
+function board(){const ps=players().map(p=>p.presence.name);Object.keys(H.w).forEach(n=>{if(!ps.includes(n))ps.push(n)});
+ ps.sort((a,b)=>(H.w[b]||0)-(H.w[a]||0));return '<div class=card>'+ps.map(n=>`<div><span>${esc(n)}</span><b>🥃 ${H.w[n]||0}</b></div>`).join('')+'</div>'}
+function updPl(){const e=$('#pl');if(e)e.innerHTML=players().map(p=>`<span class="chip ${isDone(p)?'ok':''}">${esc(p.presence.name)}${isDone(p)?' ✓':''}</span>`).join('')||'<span class=mut>Waiting for thieves to scan…</span>'}
+function qr(u){const e=$('#qr');try{const q=qrcode(0,'M');q.addData(u);q.make();e.innerHTML=q.createSvgTag({cellSize:5,margin:0,scalable:true})}catch(x){e.textContent='QR unavailable. Share the link below.'}}
+function renderHost(){let s='';
+ if(H.ph==='lobby')s=`<h1>🕶️ HEIST NIGHT</h1><p class=mut>Scan to join. Winner of each round takes a shot.</p><div id=qr class=qr></div><input id=lnk class=in value="${esc(JU)}"><p class=mut style="font-size:12px">If the QR looks wrong, paste this page's share link above.</p><div id=pl class=chips></div><div class=mut style="margin-top:8px">What do you want to play?</div><div id=menu class=chips style="margin:8px 0"></div><button class=btn id=go>START THE HEIST</button>`;
+ else if(H.ph==='play')s=`<div class=mut>ROUND ${H.r}${H.tot?' / '+H.tot:''}</div><h1>${I[H.g][0]}</h1><p>${I[H.g][1]}</p><div id=race></div><div id=pl class=chips></div><div id=wt class=mut></div><button class=btn2 id=rv>Reveal results now</button>`;
+ else if(H.ph==='result'){const t=(H.top||[]).map(x=>`<div><span>${esc(x[0])}</span><b>${fmt(H.g,x[1])}${x[2]?' <small class=mut>('+esc(x[2])+')</small>':''}</b></div>`).join('');
+  s=`<div class=mut>ROUND ${H.r}${H.tot?' / '+H.tot:''} · ${I[H.g][0]}</div>${H.win?`<div class=shot>🥃 ${esc(H.win)} TAKES A SHOT!</div>`:'<div class=shot>Nobody cracked it. No shot!</div>'}<div class=card>${t}</div>${board()}<button class=btn id=nx>${H.tot?(H.r>=H.tot?'FINAL SCORES':'NEXT ROUND'):'PLAY AGAIN'}</button>${H.tot?'':'<button class=btn2 id=mn>Back to menu</button>'}`}
+ else s=`<h1>🏁 HEIST COMPLETE</h1><p class=mut>Shots taken</p>${board()}<p class=mut>Drink some water. Get everyone home safe.</p><button class=btn2 id=again>New game</button>`;
+ app.innerHTML=s;updPl();
+ const b=id=>$(id);
+ if(b('#qr')){qr(JU);$('#lnk').oninput=e=>qr(e.target.value)}
+ if(b('#go'))$('#go').onclick=nextRound;
+ if(b('#rv'))$('#rv').onclick=endRound;
+ if(b('#nx'))$('#nx').onclick=()=>H.tot&&H.r>=H.tot?(hset({ph:'end'}),renderHost()):nextRound();
+ if(b('#again'))$('#again').onclick=toLobby;
+ if(b('#mn'))$('#mn').onclick=toLobby;
+ if(b('#menu')){const up=()=>{$('#menu').innerHTML=menuHTML();$('#go').textContent=MODE?'PLAY: '+I[MODE][0]:'START THE HEIST'};up();$('#menu').onclick=e=>{const x=e.target.closest('button');if(!x)return;MODE=x.dataset.g||null;up()}}
+}
+function toLobby(){H={w:{},ph:'lobby',r:0};room.presence({ph:'lobby',r:0,w:{},win:null,top:null,tot:0});renderHost()}
+function menuHTML(){return[[null,'🎲 Full heist · 10 random rounds'],...ALL.map(g=>[g,I[g][0]])].map(([g,l])=>`<button data-g="${g||''}" class="chip" style="cursor:pointer;color:var(--fg);font-size:14px;${MODE===g?'border-color:var(--ac);color:var(--ac);font-weight:700':''}">${l}</button>`).join('')}
+let bag=[],lastG='';
+function nextGame(){if(MODE)return MODE;if(!bag.length){do{bag=ALL.map(x=>[Math.random(),x]).sort((p,q)=>p[0]-q[0]).map(x=>x[1])}while(bag[0]===lastG&&ALL.length>1)}lastG=bag.shift();return lastG}
+function nextRound(){waitEnd=0;clearTimeout(hostTimer);const r=H.r+1,g=nextGame();hset({ph:'play',r,g,tot:MODE?0:10,seed:Math.random()*1e9|0,win:null,top:null});renderHost();hostTimer=setTimeout(endRound,g==='laser'?200000:100000)}
+function hostTick(){if(!H.ph)return;updPl();if(H.ph==='play'&&H.g==='redgreen'&&$('#race'))$('#race').innerHTML=lanesHTML(players().map(p=>p.presence).filter(q=>q.gr===H.r).map(q=>({name:q.name,x:q.x||0,d:q.d,l:q.l,fin:q.fin})));if(H.ph==='play'){const ps=players();if(ps.length&&ps.every(isDone)){if(H.g==='laser'){if(!waitEnd)waitEnd=Date.now()+LASER_WAIT;const left=Math.ceil((waitEnd-Date.now())/1000),w=$('#wt');if(w)w.textContent='Everyone is out. Results in '+Math.floor(left/60)+':'+String(Math.max(0,left)%60).padStart(2,'0')+' (or tap Reveal now)';if(left<=0)endRound()}else endRound()}else waitEnd=0}}
+function endRound(){if(H.ph!=='play')return;clearTimeout(hostTimer);
+ const sc=players().filter(isDone).map(p=>[p.presence.name,p.presence.s,p.presence.ex]).sort((a,b)=>a[1]-b[1]||(a[0]<b[0]?-1:1));
+ const w=Object.assign({},H.w);let win=null;if(sc[0]&&sc[0][1]<99999){win=sc[0][0];w[win]=(w[win]||0)+1}
+ hset({ph:'result',w,win,top:sc.slice(0,6)});renderHost()}
+
+/* ---------- PLAYER ---------- */
+function playerTick(){
+ const hp=room.peers().find(p=>p.presence.role==='host'),h=hp&&hp.presence;
+ const k=h?h.ph+':'+h.r:'none';if(k===lastK)return;lastK=k;
+ if(G){G();G=null}
+ if(!h){app.innerHTML=room.ok()?`<h2>Waiting for the host…</h2><p class=mut>Connected. Host: tap "Host on the big screen". (${room.peers().length} in room)</p>`:'<h2>Connecting to the host…</h2><p class=mut>Taking long? Use the same Wi-Fi as the host, turn off any VPN, then reload this page.</p>';lastK='';return}
+ if(h.ph==='lobby')app.innerHTML=`<h2>You're in, ${esc(myName)} 😎</h2><p class=mut>Waiting for the heist to start…</p>`;
+ else if(h.ph==='play')startRound(h.g,h.seed,h.r,h.tot);
+ else if(h.ph==='result'){const t=(h.top||[]).map(x=>`<div><span>${esc(x[0])}</span><b>${fmt(h.g,x[1])}${x[2]?' <small class=mut>('+esc(x[2])+')</small>':''}</b></div>`).join('');
+  const you=h.win===myName;
+  app.innerHTML=`<div class=mut>ROUND ${h.r}${h.tot?' / '+h.tot:''}</div>${you?'<div class=shot>🥃 YOU TAKE THE SHOT!</div><p>Drink up, you absolute thief.</p>':h.win?`<div class=shot>${esc(h.win)} takes a shot</div>`:'<div class=shot>Nobody cracked it. No shot!</div>'}<div class=card>${t}</div><p class=mut>Waiting for the next round…</p>`;
+  if(you)vib([200,80,200])}
+ else{const w=h.w||{};const you=w[myName]||0;app.innerHTML=`<h1>🏁 Heist complete</h1><p>You took <b>${you}</b> shot${you===1?'':'s'}.</p><div class=card>${Object.keys(w).sort((a,b)=>w[b]-w[a]).map(n=>`<div><span>${esc(n)}</span><b>🥃 ${w[n]}</b></div>`).join('')}</div>`}
+}
+function startRound(g,seed,r,tot){CR=r;
+ let tm,stop=()=>{},fin=false;G=()=>{clearTimeout(tm);stop()};
+ const done=(s,ex)=>{if(fin)return;fin=true;stop();room.presence({r,s,ex:ex||null});app.innerHTML=`<h2>🔒 Locked in</h2><div class=big>${fmt(g,s)}</div>${ex?'<p>'+esc(ex)+'</p>':''}<p class=mut>Waiting for the other thieves…</p>`};
+ let n=5;app.innerHTML=`<div class=mut>ROUND ${r}${tot?' / '+tot:''}</div><h2>${I[g][0]}</h2><p style="font-size:20px;margin:14px 0">${I[g][1]}</p><div class=mut>Starting in</div><div id=cd class=big>5</div>`;
+ const tick=()=>{if(--n>0){$('#cd').textContent=n;tm=setTimeout(tick,1000)}else{app.innerHTML='<div id=st></div>';stop=GAME[g]($('#st'),rng(seed),done)||(()=>{})}};
+ tm=setTimeout(tick,1000);
+}
+
+/* ---------- MINIGAMES ---------- */
+const GAME={
+safe(el,R,done){
+ const target=10+Math.floor(R()*80);let ang=0,last=-1,pen=0,drag=false,pa=0,over=false;const t0=performance.now();
+ let ticks='';for(let i=0;i<100;i++){const a=i*3.6,m=i%10===0,f=i%5===0;ticks+=`<line y1="-135" y2="${m?-114:f?-120:-126}" stroke="${m?'#e8f1ee':'#6b7a76'}" stroke-width="${m?3:1.5}" transform="rotate(${a})"/>`;if(m)ticks+=`<text transform="rotate(${a}) translate(0,-96)" fill="#e8f1ee" font-size="15" text-anchor="middle">${i}</text>`}
+ el.innerHTML=`<div class=mut>🔊 Volume up · feel for the vibration</div><div id=num class=big>00</div><div style="position:relative;width:280px;margin:18px auto"><div class=ptr>▼</div><svg id=dial viewBox="-140 -140 280 280" width=280 height=280 style="touch-action:none"><circle r=138 fill="#1b222a" stroke="#39ff88" stroke-width=2 /><g id=rot>${ticks}</g><circle r=26 fill="#0b0d10" stroke="#2b333c"/></svg></div><button class=btn id=lk>LOCK IN</button><div id=msg class=mut></div>`;
+ const d=$('#dial'),num=()=>(((Math.round(-ang/3.6))%100)+100)%100;
+ const pt=e=>{const r=d.getBoundingClientRect();return Math.atan2(e.clientY-r.top-r.height/2,e.clientX-r.left-r.width/2)*180/Math.PI};
+ d.onpointerdown=e=>{au();drag=true;pa=pt(e);d.setPointerCapture(e.pointerId)};
+ d.onpointermove=e=>{if(!drag||over)return;const a=pt(e);let dl=a-pa;if(dl>180)dl-=360;if(dl<-180)dl+=360;pa=a;ang+=dl;$('#rot').setAttribute('transform','rotate('+ang+')');
+  const n=num();if(n!==last){last=n;$('#num').textContent=String(n).padStart(2,'0');const near=Math.abs(n-target)<=1;click(near?340:130,near?.18:.09,near?.06:.025);vib(near?[28]:[5])}};
+ d.onpointerup=d.onpointercancel=()=>drag=false;
+ const fin=()=>{over=true;done(Math.round(performance.now()-t0)+pen)};
+ $('#lk').onclick=()=>{if(over)return;au();if(Math.abs(num()-target)<=1)fin();else{pen+=5000;$('#msg').textContent='❌ Wrong! +5s penalty';d.classList.remove('shake');void d.getBoundingClientRect();d.classList.add('shake');vib([80,40,80])}};
+ const iv=setInterval(()=>{if(performance.now()-t0+pen>45000){clearInterval(iv);over=true;done(99999)}},400);
+ return()=>{clearInterval(iv);over=true};
+},
+laser(el,R,done){
+ const W=300,Hh=400,L=100,PX=3.5,PW=10*PX,PH=12*PX,PY=Hh-PH-6;
+ el.innerHTML='<canvas id=cv width=300 height=400 style="width:min(300px,82vw);border-radius:12px;touch-action:none"></canvas><p class=mut>👆 Swipe anywhere on the screen to move</p><div id=sw style="position:fixed;inset:0;z-index:4;touch-action:none"></div>';
+ const c=$('#cv'),x=c.getContext('2d'),col=hue(myName),sw=$('#sw'),k=W/c.getBoundingClientRect().width*1.5;
+ let px=150,tx=150,obs=[],t=0,sp=0,last=performance.now(),raf,end=false,dn=false,lx=0;
+ sw.onpointerdown=e=>{dn=true;lx=e.clientX;sw.setPointerCapture(e.pointerId)};
+ sw.onpointermove=e=>{if(!dn)return;tx=Math.max(PW/2,Math.min(W-PW/2,tx+(e.clientX-lx)*k));lx=e.clientX};
+ sw.onpointerup=sw.onpointercancel=()=>dn=false;
+ const loop=n=>{if(end)return;const dt=Math.min(.05,(n-last)/1000);last=n;t+=dt;sp+=dt;px+=(tx-px)*Math.min(1,dt*16);const v=170+t*9;
+  if(sp>Math.max(.5,1-t*.02)){sp=0;obs.push({y:-10,g:Math.floor(R()*3)})}
+  x.fillStyle='#0b0d10';x.fillRect(0,0,W,Hh);let hit=false;obs=obs.filter(o=>o.y<Hh+10);
+  for(const o of obs){o.y+=v*dt;for(let l=0;l<3;l++)if(l!==o.g){const a=l*L+4;x.fillStyle='#ff3b4e';x.fillRect(a,o.y,L-8,6);if(o.y+6>PY&&o.y<PY+PH&&px+PW/2-3>a&&px-PW/2+3<a+L-8)hit=true}}
+  MAP.forEach((row,j)=>[...row].forEach((ch,i)=>{if(ch==='.')return;x.fillStyle=PAL[ch]||col;x.fillRect(Math.round(px-PW/2+i*PX),Math.round(PY+j*PX),Math.ceil(PX),Math.ceil(PX))}));
+  x.fillStyle='#fff';x.font='16px system-ui';x.fillText(t.toFixed(1)+'s',8,22);
+  if(hit||t>45){end=true;vib(hit?[150]:0);done(-Math.round(t*1000));return}
+  raf=requestAnimationFrame(loop)};
+ raf=requestAnimationFrame(loop);return()=>{end=true;cancelAnimationFrame(raf)};
+},
+code(el,R,done){
+ let c='';for(let i=0;i<6;i++)c+=Math.floor(R()*10);let tm,ent='',t0=0,fin=false;
+ el.innerHTML=`<div class=mut>Memorise it!</div><div class=big style="letter-spacing:.3em">${c}</div><div class=bar><i id=br></i></div>`;
+ requestAnimationFrame(()=>requestAnimationFrame(()=>{const b=$('#br');if(b)b.style.width='0'}));
+ tm=setTimeout(()=>{el.innerHTML='<div class=mut>Enter the code</div><div id=en class=big style="letter-spacing:.3em;min-height:56px">&nbsp;</div><div class=pad id=pd></div>';t0=performance.now();
+  const pd=$('#pd');['1','2','3','4','5','6','7','8','9','⌫','0',''].forEach(k=>{const b=document.createElement('button');b.textContent=k;if(!k)b.style.visibility='hidden';
+   b.onclick=()=>{if(fin)return;au();if(k==='⌫')ent=ent.slice(0,-1);else if(k)ent+=k;vib(8);$('#en').textContent=ent||'\u00a0';
+    if(ent.length===6){fin=true;done(ent===c?Math.round(performance.now()-t0):99999)}};pd.appendChild(b)})},3500);
+ return()=>{clearTimeout(tm);fin=true};
+},
+pick(el,R,done){
+ let pin=0,err=0,zc,t0,raf,sp,end=false,lock=false,tmo;
+ el.innerHTML='<div id=pn class=big></div><div class=track><div id=zn class=zone></div><div id=mk class=mk></div><div id=gh class=mk style="display:none;background:#ff3b9a;z-index:2"></div></div><button class=btn id=pk>PICK</button><div id=msg class=mut>&nbsp;</div>';
+ const pos=()=>{const p=((performance.now()-t0)/1000*sp*100)%200;return p>100?200-p:p};
+ const setup=()=>{zc=20+R()*60;sp=.8+pin*.45;t0=performance.now();$('#pn').textContent='Pin '+(pin+1)+' / 3';const z=$('#zn');z.style.left=(zc-6)+'%';z.style.width='12%'};
+ const loop=()=>{if(end)return;$('#mk').style.left=pos()+'%';raf=requestAnimationFrame(loop)};
+ $('#pk').onclick=()=>{if(end||lock)return;au();lock=true;const p=pos(),e=Math.round(Math.abs(p-zc)*10)/10;err+=e;vib(e<=6?[20]:[60]);click(e<=6?420:120,.1,.08);
+  const g=$('#gh');g.style.left=p+'%';g.style.display='block';$('#msg').textContent=(e<=6?'✅ Clean! off by ':'Off by ')+e;
+  tmo=setTimeout(()=>{g.style.display='none';lock=false;pin++;if(pin>=3){end=true;done(Math.round(err*10)/10)}else setup()},500)};
+ setup();loop();return()=>{end=true;clearTimeout(tmo);cancelAnimationFrame(raf)};
+},
+react(el,R,done){
+ el.innerHTML='<div id=bx style="position:fixed;inset:0;z-index:5;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column"><div id=ms class=big>Wait for it…</div><div id=ms2 class=mut>A button will appear at a random spot.</div></div>';
+ const bx=$('#bx'),delay=2000+R()*4000,px=R(),py=R();let pen=0,shown=0,over=false;
+ bx.onpointerdown=()=>{if(over||shown)return;pen+=1000;$('#ms').textContent='Too early! +1s';vib(60)};
+ const t1=setTimeout(()=>{const W=bx.clientWidth,Hh=bx.clientHeight,b=document.createElement('button');b.textContent='TAP!';b.className='btn';b.style.cssText='position:absolute;width:110px;height:70px;padding:0;margin:0;background:var(--red);color:#fff;left:'+Math.round(px*(W-110))+'px;top:'+Math.round(50+py*(Hh-160))+'px';
+  b.onpointerdown=e=>{e.stopPropagation();if(over)return;over=true;done(Math.round(performance.now()-shown)+pen)};$('#ms').style.display='none';$('#ms2').style.display='none';bx.appendChild(b);shown=performance.now();vib(30)},delay);
+ const t2=setTimeout(()=>{if(!over){over=true;done(99999)}},delay+6000);
+ return()=>{over=true;clearTimeout(t1);clearTimeout(t2)};
+},
+mash(el,R,done){
+ const N=100;let n=0,over=false;const t0=performance.now();
+ el.innerHTML='<div id=bx style="position:fixed;inset:0;z-index:5;background:#10151a"><div id=fl style="position:absolute;left:0;right:0;bottom:0;height:100%;background:var(--ac);opacity:.55"></div><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><div id=ct style="font-size:96px;font-weight:900">100</div><div style="font-size:30px;font-weight:800">TAP!</div></div></div>';
+ $('#bx').onpointerdown=e=>{e.preventDefault();if(over)return;n++;vib(5);$('#fl').style.height=((N-n)/N*100)+'%';$('#ct').textContent=N-n;if(n>=N){over=true;done(Math.round(performance.now()-t0))}};
+ const tm=setTimeout(()=>{if(!over){over=true;done(99999)}},40000);return()=>{over=true;clearTimeout(tm)};
+},
+redgreen(el,R,done){
+ el.innerHTML='<div id=sc style="height:70px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;background:#1f8f4d">🟢 TAP TAP TAP!</div><div id=ln style="margin:10px 0"></div><button class=btn id=tp style="padding:34px 0;font-size:26px">TAP ❤️❤️</button>';
+ const STEP=3.5,r0=CR,DEAD=t=>62000+Math.round((60000-t)/2);
+ const ph=[];let tt=0;for(let i=0;tt<70000;i++){const g=Math.max(700,2200-i*80)*(.7+R()*.6),r=700+R()*900;ph.push({s:tt,e:tt+g,red:false});ph.push({s:tt+g,e:tt+g+r,red:true});tt+=g+r}
+ const cur=t=>ph.find(p=>t<p.e)||ph[ph.length-1];
+ const t0=performance.now();let last=t0,x=0,dead=false,deadT=0,fin=false,finT=0,over=false,shown=null,dirty=false,lives=2,hurtUntil=0;
+ const pub=()=>room.presence({gr:r0,x:Math.round(x*10)/10,d:dead?1:0,l:lives,fin:fin?1:0}),end=sc=>{if(over)return;over=true;done(sc)};
+ const hearts=()=>'❤️'.repeat(lives)+'🖤'.repeat(2-lives);
+ const hurt=now=>{if(dead||fin||now<hurtUntil)return;lives--;hurtUntil=now+1000;last=now;vib(150);$('#tp').textContent='TAP '+hearts();if(lives<=0){dead=true;deadT=now-t0;vib(300)}pub()};
+ pub();
+ $('#tp').onpointerdown=e=>{e.preventDefault();if(over||dead||fin)return;const now=performance.now(),p=cur(now-t0);if(p.red&&now-t0>p.s+250)return hurt(now);last=now;x=Math.min(100,x+STEP);vib(4);if(x>=100){fin=true;finT=Math.round(now-t0);pub()}else dirty=true};
+ const iv=setInterval(()=>{if(over)return;const now=performance.now(),t=now-t0,p=cur(t);
+  if(p.red!==shown){shown=p.red;const sc=$('#sc');sc.style.background=p.red?'#c0182b':'#1f8f4d';sc.textContent=p.red?'🔴 FREEZE!':'🟢 TAP TAP TAP!'}
+  if(!dead&&!fin&&!p.red&&now-Math.max(last,t0+p.s)>2000)hurt(now);
+  if(dirty){dirty=false;pub()}
+  const o=room.peers().map(q=>q.presence).filter(q=>q.role==='player'&&q.gr===r0&&q.name!==myName);
+  $('#ln').innerHTML=lanesHTML([{name:myName,x,d:dead,l:lives,me:1},...o.map(q=>({name:q.name,x:q.x||0,d:q.d,l:q.l}))]);
+  const alive=(dead||fin?0:1)+o.filter(q=>!q.d&&!q.fin).length;
+  if(fin)end(finT);else if(o.some(q=>q.fin))end(dead?DEAD(deadT):61000);
+  else if(o.length&&alive<=1)end(dead?DEAD(deadT):60500);
+  else if(t>=60000)end(dead?DEAD(deadT):61000)},100);
+ return()=>{over=true;clearInterval(iv)};
+},
+typing(el,R,done){
+ const S=['the diamond is in the vault','keep the engine running','nobody move or the alarm sounds','we cut the power at midnight','the guard fell asleep at his desk','grab the cash and run','meet me at the old warehouse','the getaway car is parked outside','cut the red wire not the blue','smile for the security camera'];
+ const sn=S[Math.floor(R()*S.length)];let over=false,wasBad=false;
+ el.innerHTML=`<div id=sen style="font-size:24px;font-weight:700;margin:14px 0;color:var(--gold)">${sn}</div><input id=ty class=in autocomplete=off autocapitalize=off autocorrect=off spellcheck=false placeholder="Type here…"><div id=tm style="color:var(--red);font-weight:700;min-height:24px"></div>`;
+ const t0=performance.now(),ty=$('#ty');ty.focus();ty.onpaste=e=>e.preventDefault();
+ ty.oninput=()=>{if(over)return;const v=ty.value.toLowerCase();if(v.trim()===sn){over=true;return done(Math.round(performance.now()-t0))}
+  let k=0;while(k<v.length&&k<sn.length&&v[k]===sn[k])k++;const bad=k<v.length;
+  $('#sen').innerHTML=`<span style="color:var(--ac)">${sn.slice(0,k)}</span>${sn.slice(k)}`;$('#tm').textContent=bad?'❌ Wrong letter! Fix it.':'';ty.style.borderColor=bad?'var(--red)':'#2b333c';if(bad&&!wasBad)vib(40);wasBad=bad};
+ const tm=setTimeout(()=>{if(!over){over=true;done(99999)}},60000);return()=>{over=true;clearTimeout(tm)};
+},
+timer(el,R,done){
+ const T=10+Math.floor(R()*6);let over=false,raf;const t0=performance.now();
+ el.innerHTML=`<div class=mut>Target</div><div class=big>${T} seconds</div><div id=ck style="font:700 26px ui-monospace,Menlo,monospace;color:var(--ac);min-height:36px"></div><p class=mut id=hd>Watch the clock. It hides after 2.5 seconds.</p><button class=btn id=st style="padding:56px 0;font-size:30px">STOP</button>`;
+ const tick=()=>{if(over)return;const e=performance.now()-t0;if(e<2500){$('#ck').textContent=(e/1000).toFixed(9)+' s';raf=requestAnimationFrame(tick)}else{$('#ck').textContent='⏳ hidden…';$('#hd').textContent='Keep counting. Tap STOP at '+T+' seconds.'}};tick();
+ $('#st').onpointerdown=e=>{e.preventDefault();if(over)return;over=true;const ck=performance.now()-t0;done(Math.round(Math.abs(ck-T*1000)),'You clicked at '+(ck/1000).toFixed(3)+'s (target '+T+'s)')};
+ const tm=setTimeout(()=>{if(!over){over=true;done(99999)}},T*1000+10000);return()=>{over=true;clearTimeout(tm);cancelAnimationFrame(raf)};
+},
+maze(el,R,done){
+ const cols=8,rows=11,cs=36,wt=4,CW=cols*cs,CH=rows*cs,rad=5;
+ const cl=[];for(let i=0;i<cols*rows;i++)cl.push({n:1,e:1,s:1,w:1,v:0});const C=(x,y)=>cl[y*cols+x];
+ const st=[[0,0]];C(0,0).v=1;
+ while(st.length){const[x,y]=st[st.length-1],nb=[];
+  if(y>0&&!C(x,y-1).v)nb.push([x,y-1,'n','s']);if(x<cols-1&&!C(x+1,y).v)nb.push([x+1,y,'e','w']);if(y<rows-1&&!C(x,y+1).v)nb.push([x,y+1,'s','n']);if(x>0&&!C(x-1,y).v)nb.push([x-1,y,'w','e']);
+  if(nb.length){const[nx,ny,a,b]=nb[Math.floor(R()*nb.length)];C(x,y)[a]=0;C(nx,ny)[b]=0;C(nx,ny).v=1;st.push([nx,ny])}else st.pop()}
+ const Wl=[];for(let y=0;y<rows;y++)for(let x=0;x<cols;x++){const c=C(x,y),X=x*cs,Y=y*cs;
+  if(c.n)Wl.push([X-wt/2,Y-wt/2,cs+wt,wt]);if(c.w)Wl.push([X-wt/2,Y-wt/2,wt,cs+wt]);if(y===rows-1&&c.s)Wl.push([X-wt/2,Y+cs-wt/2,cs+wt,wt]);if(x===cols-1&&c.e)Wl.push([X+cs-wt/2,Y-wt/2,wt,cs+wt])}
+ const hit=(px,py)=>Wl.some(w=>{const nx=Math.max(w[0],Math.min(px,w[0]+w[2])),ny=Math.max(w[1],Math.min(py,w[1]+w[3]));return(px-nx)**2+(py-ny)**2<rad*rad});
+ el.innerHTML=`<canvas id=cv width=${CW} height=${CH} style="width:min(${CW}px,90vw);height:auto;border-radius:10px;touch-action:none"></canvas><p class=mut id=mm>Restarts: 0</p>`;
+ const c=$('#cv'),g=c.getContext('2d'),col=hue(myName);let trail=[],hx=cs/2,hy=cs/2,on=false,over=false,resets=0,raf;const t0=performance.now();
+ const draw=()=>{if(over)return;g.fillStyle='#0b0d10';g.fillRect(0,0,CW,CH);g.fillStyle='rgba(57,255,136,.3)';g.fillRect(0,0,cs,cs);g.fillStyle='rgba(255,200,61,.35)';g.fillRect(CW-cs,CH-cs,cs,cs);
+  g.fillStyle='#fff';g.font='bold 11px system-ui';g.textAlign='center';g.fillText('START',cs/2,cs/2+4);g.fillText('FINISH',CW-cs/2,CH-cs/2+4);
+  g.fillStyle='#8a9a96';Wl.forEach(w=>g.fillRect(w[0],w[1],w[2],w[3]));
+  if(trail.length>1){g.strokeStyle=col;g.lineWidth=8;g.lineJoin='round';g.lineCap='round';g.beginPath();g.moveTo(trail[0][0],trail[0][1]);for(const p of trail)g.lineTo(p[0],p[1]);g.stroke()}
+  if(on){g.fillStyle='#fff';g.beginPath();g.arc(hx,hy,6,0,7);g.fill()}
+  raf=requestAnimationFrame(draw)};draw();
+ const pt=e=>{const r=c.getBoundingClientRect();return[(e.clientX-r.left)*CW/r.width,(e.clientY-r.top)*CH/r.height]};
+ c.onpointerdown=e=>{if(over)return;const[x,y]=pt(e);if(x<cs+8&&y<cs+8){on=true;hx=cs/2;hy=cs/2;trail=[[hx,hy]];c.setPointerCapture(e.pointerId);vib(10)}};
+ c.onpointermove=e=>{if(!on||over)return;const[tx,ty]=pt(e),dx=tx-hx,dy=ty-hy,n=Math.max(1,Math.ceil(Math.hypot(dx,dy)/2));
+  for(let i=0;i<n;i++){const sx=dx/n,sy=dy/n;if(!hit(hx+sx,hy+sy)){hx+=sx;hy+=sy}else if(!hit(hx+sx,hy)){hx+=sx}else if(!hit(hx,hy+sy)){hy+=sy}else break;trail.push([hx,hy])}
+  if(hx>CW-cs&&hy>CH-cs){over=true;vib([40,40,40]);done(Math.round(performance.now()-t0),'Restarts: '+resets)}};
+ const up=()=>{if(on&&!over){trail=[];resets++;$('#mm').textContent='Restarts: '+resets;vib(30)}on=false};
+ c.onpointerup=c.onpointercancel=up;
+ const tm=setTimeout(()=>{if(!over){over=true;done(99999,'Out of time')}},90000);
+ return()=>{over=true;clearTimeout(tm);cancelAnimationFrame(raf)};
+},
+diamonds(el,R,done){
+ const NF=5+Math.floor(R()*4),seq=[];let total=0;
+ for(let k=0;k<NF;k++){const m=1+Math.floor(R()*3),ps=[];for(let q=0;q<m;q++)ps.push([R(),R()]);total+=m;seq.push({ps,on:300+R()*150,off:200+R()*350})}
+ el.innerHTML='<div id=dm style="position:relative;height:340px;background:var(--card);border-radius:14px;overflow:hidden"><div id=dt class=big style="margin-top:140px">Get ready…</div></div>';
+ const box=$('#dm');let i=0,over=false,tm;
+ const ask=()=>{let v=0;el.innerHTML='<div class=mut>How many 💎 did you see?</div><div id=nv class=big style="font-size:80px">0</div><div style="display:flex;gap:12px"><button class=btn2 id=mi style="font-size:36px">−</button><button class=btn2 id=pu style="font-size:36px">+</button></div><button class=btn id=ok>LOCK IN</button>';const t1=performance.now();
+  const set=d=>{v=Math.max(0,Math.min(40,v+d));$('#nv').textContent=v;vib(5)};
+  $('#mi').onpointerdown=e=>{e.preventDefault();set(-1)};$('#pu').onpointerdown=e=>{e.preventDefault();set(1)};
+  $('#ok').onclick=()=>{if(over)return;over=true;clearTimeout(tm);v===total?done(Math.round(performance.now()-t1),'Correct: '+total):done(99999,'Out! You said '+v+', it was '+total)};
+  tm=setTimeout(()=>{if(!over){over=true;done(99999,'Out! No answer')}},20000)};
+ const flash=()=>{if(over)return;if(i>=NF)return ask();const q=seq[i++];$('#dt').style.display='none';const ds=q.ps.map(p=>{const d=document.createElement('div');d.textContent='💎';d.style.cssText='position:absolute;font-size:46px;left:'+Math.round(p[0]*(box.clientWidth-60))+'px;top:'+Math.round(p[1]*270)+'px';box.appendChild(d);return d});
+  tm=setTimeout(()=>{ds.forEach(d=>d.remove());tm=setTimeout(flash,q.off)},q.on)};
+ tm=setTimeout(flash,1200);
+ return()=>{over=true;clearTimeout(tm)};
+}};
+</script></body></html>
